@@ -5,43 +5,55 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 if [[ -z "${PREFIX:-}" ]]; then
-    echo "TUKU installer: PREFIX is not set."
-    echo "Run this installer inside Termux."
+    echo "TUKU requires Termux."
     exit 1
 fi
 
-if [[ ! -d "$PREFIX" || ! -w "$PREFIX" ]]; then
-    echo "PREFIX is not writable: $PREFIX"
-    exit 1
-fi
+BIN="$PREFIX/bin"
+LIB="$PREFIX/lib/tuku"
 
-BIN_DIR="$PREFIX/bin"
-LIB_DIR="$PREFIX/lib/tuku"
+mkdir -p "$BIN" "$LIB/.compiler/Packages"
 
-mkdir -p "$BIN_DIR"
-mkdir -p "$LIB_DIR/.compiler/Packages"
-mkdir -p "$LIB_DIR/.TUKU/EDITOR"
+cp "$REPO_ROOT/.compiler/Compile.sh" "$LIB/.compiler/"
+cp "$REPO_ROOT/.compiler/Compiler-c.sh" "$LIB/.compiler/"
+cp "$REPO_ROOT/.compiler/Compiler-c++.sh" "$LIB/.compiler/"
+cp "$REPO_ROOT/.compiler/Compile-c#.sh" "$LIB/.compiler/"
+cp "$REPO_ROOT/.compiler/Packages/FetchPackages.sh" "$LIB/.compiler/Packages/"
 
-install -m 755 "$REPO_ROOT/tuku" "$BIN_DIR/tuku"
+chmod +x "$LIB/.compiler/"*.sh
+chmod +x "$LIB/.compiler/Packages/"*.sh
 
-for file in Compile.sh Compiler-c.sh Compiler-c++.sh Compile-c#.sh
-do
-    install -m 755 \
-        "$REPO_ROOT/.compiler/$file" \
-        "$LIB_DIR/.compiler/$file"
-done
+cat > "$BIN/tuku" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
 
-install -m 755 \
-    "$REPO_ROOT/.compiler/Packages/FetchPackages.sh" \
-    "$LIB_DIR/.compiler/Packages/FetchPackages.sh"
+ROOT="$LIB"
 
-install -m 644 \
-    "$REPO_ROOT/.TUKU/EDITOR/editor.properties" \
-    "$LIB_DIR/.TUKU/EDITOR/editor.properties"
+case "\${1:-help}" in
+    version|--version)
+        echo "TUKU 0.1.0"
+        ;;
+    compile|build)
+        [[ \$# -ge 2 ]] || {
+            echo "Usage: tuku compile <source-file>"
+            exit 2
+        }
+        exec bash "\$ROOT/.compiler/Compile.sh" "\$2"
+        ;;
+    packages)
+        exec bash "\$ROOT/.compiler/Packages/FetchPackages.sh"
+        ;;
+    *)
+        echo "TUKU - Termux Coding Toolkit"
+        echo "Usage:"
+        echo "  tuku version"
+        echo "  tuku compile <file>"
+        echo "  tuku packages"
+        ;;
+esac
+EOF
 
-install -m 644 \
-    "$REPO_ROOT/.TUKU/EDITOR/editor.syntax.properties" \
-    "$LIB_DIR/.TUKU/EDITOR/editor.syntax.properties"
+chmod +x "$BIN/tuku"
 
-echo "TUKU installed successfully."
+echo "TUKU installed successfully!"
 echo "Run: tuku"
