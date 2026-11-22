@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-
   workflow_dispatch:
 
 permissions:
@@ -12,23 +11,20 @@ permissions:
 
 jobs:
   build:
-    name: Build TUKU .deb
-
+    name: Build TUKU Debian package
     runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build Debian package
+      - name: Build package
         shell: bash
-
         run: |
           set -euo pipefail
 
           VERSION="0.1.0"
-
-          STAGE="$RUNNER_TEMP/package-root"
+          STAGE="$RUNNER_TEMP/tuku-package"
           OUTPUT="$RUNNER_TEMP/output"
 
           mkdir -p "$STAGE/DEBIAN"
@@ -36,30 +32,51 @@ jobs:
           mkdir -p "$STAGE/usr/lib/tuku/.compiler/Packages"
           mkdir -p "$STAGE/usr/share/doc/tuku"
 
-          install -m 755 tuku "$STAGE/usr/bin/tuku"
+          # Install compiler scripts
+          cp .compiler/Compile.sh "$STAGE/usr/lib/tuku/.compiler/"
+          cp .compiler/Compiler-c.sh "$STAGE/usr/lib/tuku/.compiler/"
+          cp .compiler/Compiler-c++.sh "$STAGE/usr/lib/tuku/.compiler/"
+          cp '.compiler/Compile-c#.sh' "$STAGE/usr/lib/tuku/.compiler/"
+          cp .compiler/Packages/FetchPackages.sh "$STAGE/usr/lib/tuku/.compiler/Packages/"
 
-          install -m 755 .compiler/Compile.sh \
-            "$STAGE/usr/lib/tuku/.compiler/Compile.sh"
+          chmod +x "$STAGE/usr/lib/tuku/.compiler/"*.sh
+          chmod +x "$STAGE/usr/lib/tuku/.compiler/Packages/"*.sh
 
-          install -m 755 .compiler/Compiler-c.sh \
-            "$STAGE/usr/lib/tuku/.compiler/Compiler-c.sh"
+          # Generate TUKU command
+          cat > "$STAGE/usr/bin/tuku" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
 
-          install -m 755 .compiler/Compiler-c++.sh \
-            "$STAGE/usr/lib/tuku/.compiler/Compiler-c++.sh"
+          ROOT="/usr/lib/tuku"
 
-          install -m 755 .compiler/Compile-c#.sh \
-            "$STAGE/usr/lib/tuku/.compiler/Compile-c#.sh"
+          case "${1:-help}" in
+              version|--version)
+                  echo "TUKU 0.1.0"
+                  ;;
+              compile|build)
+                  [[ $# -ge 2 ]] || {
+                      echo "Usage: tuku compile <source-file>"
+                      exit 2
+                  }
+                  exec bash "$ROOT/.compiler/Compile.sh" "$2"
+                  ;;
+              packages)
+                  exec bash "$ROOT/.compiler/Packages/FetchPackages.sh"
+                  ;;
+              *)
+                  echo "TUKU - Coding Toolkit"
+                  echo "Usage:"
+                  echo "  tuku version"
+                  echo "  tuku compile <file>"
+                  echo "  tuku packages"
+                  ;;
+          esac
+          EOF
 
-          install -m 755 .compiler/Packages/FetchPackages.sh \
-            "$STAGE/usr/lib/tuku/.compiler/Packages/FetchPackages.sh"
+          chmod 755 "$STAGE/usr/bin/tuku"
 
-          install -m 644 LICENSE \
-            "$STAGE/usr/share/doc/tuku/copyright"
-
-          install -m 644 README.md \
-            "$STAGE/usr/share/doc/tuku/README.md"
-
-          cat > "$STAGE/DEBIAN/control" <<CONTROL
+          # Debian metadata
+          cat > "$STAGE/DEBIAN/control" <<EOF
           Package: tuku
           Version: $VERSION
           Section: devel
@@ -67,9 +84,11 @@ jobs:
           Architecture: all
           Maintainer: TUKU contributors
           Description: Termux-first coding toolkit
-           Command-line helpers for compiling C, C++ and C# source files.
-           The package can also be installed on Debian-based systems.
-          CONTROL
+           C, C++ and C# compilation helpers.
+          EOF
+
+          cp LICENSE "$STAGE/usr/share/doc/tuku/copyright"
+          cp README.md "$STAGE/usr/share/doc/tuku/README.md"
 
           mkdir -p "$OUTPUT"
 
@@ -80,7 +99,6 @@ jobs:
 
       - name: Upload Debian package
         uses: actions/upload-artifact@v4
-
         with:
           name: tuku-deb
           path: ${{ runner.temp }}/output/*.deb
