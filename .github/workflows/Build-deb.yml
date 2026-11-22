@@ -1,1 +1,87 @@
+name: Build Debian package
 
+on:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build TUKU .deb
+
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Debian package
+        shell: bash
+
+        run: |
+          set -euo pipefail
+
+          VERSION="0.1.0"
+
+          STAGE="$RUNNER_TEMP/package-root"
+          OUTPUT="$RUNNER_TEMP/output"
+
+          mkdir -p "$STAGE/DEBIAN"
+          mkdir -p "$STAGE/usr/bin"
+          mkdir -p "$STAGE/usr/lib/tuku/.compiler/Packages"
+          mkdir -p "$STAGE/usr/share/doc/tuku"
+
+          install -m 755 tuku "$STAGE/usr/bin/tuku"
+
+          install -m 755 .compiler/Compile.sh \
+            "$STAGE/usr/lib/tuku/.compiler/Compile.sh"
+
+          install -m 755 .compiler/Compiler-c.sh \
+            "$STAGE/usr/lib/tuku/.compiler/Compiler-c.sh"
+
+          install -m 755 .compiler/Compiler-c++.sh \
+            "$STAGE/usr/lib/tuku/.compiler/Compiler-c++.sh"
+
+          install -m 755 .compiler/Compile-c#.sh \
+            "$STAGE/usr/lib/tuku/.compiler/Compile-c#.sh"
+
+          install -m 755 .compiler/Packages/FetchPackages.sh \
+            "$STAGE/usr/lib/tuku/.compiler/Packages/FetchPackages.sh"
+
+          install -m 644 LICENSE \
+            "$STAGE/usr/share/doc/tuku/copyright"
+
+          install -m 644 README.md \
+            "$STAGE/usr/share/doc/tuku/README.md"
+
+          cat > "$STAGE/DEBIAN/control" <<CONTROL
+          Package: tuku
+          Version: $VERSION
+          Section: devel
+          Priority: optional
+          Architecture: all
+          Maintainer: TUKU contributors
+          Description: Termux-first coding toolkit
+           Command-line helpers for compiling C, C++ and C# source files.
+           The package can also be installed on Debian-based systems.
+          CONTROL
+
+          mkdir -p "$OUTPUT"
+
+          dpkg-deb --build --root-owner-group \
+            "$STAGE" "$OUTPUT/tuku_${VERSION}_all.deb"
+
+          dpkg-deb --info "$OUTPUT/tuku_${VERSION}_all.deb"
+
+      - name: Upload Debian package
+        uses: actions/upload-artifact@v4
+
+        with:
+          name: tuku-deb
+          path: ${{ runner.temp }}/output/*.deb
+          if-no-files-found: error
