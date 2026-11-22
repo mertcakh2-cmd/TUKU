@@ -1,1 +1,12 @@
 
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# -eq 0 ]]; then
+    echo "Usage: EDITOR-C <source.c>"
+    exit 2
+fi
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+exec bash "$SCRIPT_DIR/../.compiler/Compiler-c.sh" "$@"
